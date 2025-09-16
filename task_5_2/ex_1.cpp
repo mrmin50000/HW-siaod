@@ -7,7 +7,6 @@
 #include <ios>
 #include <utility>
 #include <chrono>
-#include <unordered_map>
 
 int genRandNumber(int min, int max) {
 	std::random_device rd;
@@ -25,14 +24,21 @@ std::string genRandString(int len) {
 	return str;
 }
 
-std::string getFioAndAddress(std::unordered_map<int, std::pair<int, std::string>> map, int billNumber) {
+std::string readFromOffset(long offset, std::ifstream &file) {
+	file.seekg(offset);
+	char a[62];
+	file.read(a, 62);
+	std::string res = a;
+	return res;
+}
 
-	int left = 0, right = map.size(), mid;
+std::string getFioAndAddress(std::vector<std::pair<int, int>> table, int billNumber, std::ifstream &file) {
+	int left = 0, right = table.size(), mid;
 	while (left <= right) {
 		mid = (left + right) / 2;
-		if (map[mid].first == billNumber)
-			return map[mid].second;
-		else if (map[mid].first > billNumber)
+		if (table[mid].first == billNumber)
+			return readFromOffset(table[mid].second, file);
+		else if (table[mid].first > billNumber)
 			right = mid - 1;
 		else
 			left = mid + 1;
@@ -40,12 +46,12 @@ std::string getFioAndAddress(std::unordered_map<int, std::pair<int, std::string>
 	return "not found";
 }
 
+
 int main() {
 	std::string result;
 	std::ofstream inputFile("file.bin", std::ios::binary);
-	int billNumberInput, n;
-	std::unordered_map<int, std::pair<int, std::string>> map;
-	std::vector<std::pair<int, std::string>> forMap;
+	int billNumberInput, n, offset;
+	std::vector<std::pair<int, int>> table;
 	std::cin >> n;
 	for (int i = 0; i < n; ++i) {
 		if (i == n / 8)
@@ -61,22 +67,20 @@ int main() {
 	inputFile.close();
 	
 	auto start = std::chrono::high_resolution_clock::now();
+	
 	std::ifstream outputFile("file.bin", std::ios::binary);
-	int billNumber;
-	std::string data;
+	int billNumber = 0;
+	char data[62];
 	while (outputFile.read((char *)&billNumber, sizeof(int))) {
 		int i = be32toh(billNumber);
-		std::getline(outputFile, data);
-		forMap.push_back(std::pair(i, data));
+		offset = outputFile.tellg();
+		outputFile.read(data, 62);
+		table.push_back(std::pair(i, offset));
 	}
+	outputFile.clear();
+	std::sort(table.begin(), table.end());
+	std::cout << getFioAndAddress(table, 8888888, outputFile) << '\n';
 	outputFile.close();
-	
-	std::sort(forMap.begin(), forMap.end());
-	for (int i = 0;i < forMap.size(); ++i) {
-		map[i] = forMap[i];
-	}
-
-	std::cout << getFioAndAddress(map, 8888888) << '\n';
 
 	auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> total = end - start;
