@@ -24,7 +24,7 @@ std::string genRandString(int len) {
 	return str;
 }
 
-std::string readFromOffset(long offset, std::ifstream &file) {
+std::string readFromOffset(int offset, std::ifstream &file) {
 	file.seekg(offset);
 	char a[62];
 	file.read(a, 62);
@@ -50,9 +50,10 @@ std::string getFioAndAddress(std::vector<std::pair<int, int>> table, int billNum
 int main() {
 	std::string result;
 	std::ofstream inputFile("file.bin", std::ios::binary);
-	int billNumberInput, n, offset;
+	int billNumberInput, n, offset, yo;
 	std::vector<std::pair<int, int>> table;
 	std::cin >> n;
+	std::cin >> yo;
 	for (int i = 0; i < n; ++i) {
 		if (i == n / 8)
 			billNumberInput = htobe32(8888888);
@@ -66,8 +67,6 @@ int main() {
 	}
 	inputFile.close();
 	
-	auto start = std::chrono::high_resolution_clock::now();
-	
 	std::ifstream outputFile("file.bin", std::ios::binary);
 	int billNumber = 0;
 	char data[62];
@@ -78,8 +77,10 @@ int main() {
 		table.push_back(std::pair(i, offset));
 	}
 	outputFile.clear();
+
+	auto start = std::chrono::high_resolution_clock::now();
 	std::sort(table.begin(), table.end());
-	std::cout << getFioAndAddress(table, 8888888, outputFile) << '\n';
+	std::cout << getFioAndAddress(table, yo, outputFile) << '\n';
 	outputFile.close();
 
 	auto end = std::chrono::system_clock::now();
