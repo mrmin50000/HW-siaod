@@ -155,7 +155,7 @@ int main() {
 	
 	while (true) {
 		int action;
-		std::cout << "1 - insert\n2 - search\n3 - remove\n4 - display\n\nAction: ";
+		std::cout << "1 - insert\n2 - search\n3 - remove\n4 - display\n5 - exit\n\nAction: ";
 		std::cin >> action;
 		switch (action) {
 			case 1: {
@@ -195,6 +195,10 @@ int main() {
 
 			case 4: {
 				hashTable.displayTable();
+			}
+
+			case 5: {
+				return 0;
 			}
 		}
 	}
