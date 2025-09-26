@@ -195,6 +195,7 @@ int main() {
 
 			case 4: {
 				hashTable.displayTable();
+				break;
 			}
 
 			case 5: {
@@ -203,5 +204,4 @@ int main() {
 		}
 	}
 
-	return 0;
 }
