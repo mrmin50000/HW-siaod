@@ -34,9 +34,10 @@ class HashTable {
 	int linearProbing(int key, int attempt) const {
 		return (hashFunction(key) + attempt) % capacity;
 	}
+
 	void reHash() {
 		std::cout << "Rehashing...\n";
-		
+		size = 0;
 		std::vector<Product> oldTable = table;
 		int oldCapacity = capacity;
 		capacity *= 2;
@@ -45,7 +46,7 @@ class HashTable {
 		
 		for (int i = 0; i < oldCapacity; ++i) {
 			if (!oldTable[i].isEmpty() && !oldTable[i].isDeleted())
-			insert(oldTable[i]);
+				insert(oldTable[i]);
 		}
 	}
 
@@ -56,13 +57,9 @@ class HashTable {
 	}
 
 	void default_init() {
-		insert(Product(1001, "PIM", 555));
-		insert(Product(2002, "PAM", 666));
-		insert(Product(3003, "RAM", 777));
-		insert(Product(4004, "FFF", 888));
-		insert(Product(5005, "ASD", 999));
-		insert(Product(6006, "JKL", 1111));
-		insert(Product(7007, "RURURU", 2222));
+		insert(Product(100112, "PIM", 555));
+		insert(Product(200232, "PAM", 666));
+		insert(Product(300312, "RAM", 777));
 	}
 
 	void insert(const Product &product) {
@@ -96,7 +93,7 @@ class HashTable {
 		int attempt = 0;
 		int index;
 
-		while (attempt < capacity && !table[index].isEmpty()) {
+		while (attempt < capacity) {
 			index = linearProbing(key, attempt);
 
 			if (table[index].isEmpty())
@@ -116,11 +113,13 @@ class HashTable {
 		int attempt = 0;
 		int index;
 
-		while (attempt < capacity && !table[index].isEmpty()) {
+		while (attempt < capacity) {
 			index = linearProbing(key, attempt);
 
-			if (table[index].isEmpty())
+			if (table[index].isEmpty() || table[index].isDeleted()) {
+				std::cout << "not found\n";
 				break;
+			}
 
 			if (table[index].code == key && !table[index].isDeleted()) {
 				table[index].code = -2;
@@ -133,12 +132,13 @@ class HashTable {
 				}
 
 				--size;
-				std::cout << "Product with key " << key << " deleted from index " << index << '\n';
+				std::cout << "product with key: " << key << " deleted from index: " << index << '\n';
 				break;
 			}
 			++attempt;
 		}
 	}
+
     void displayTable() const {
         std::cout << "Capacity: " << capacity << ", Size: " << size << "\n";
 
@@ -151,17 +151,53 @@ class HashTable {
 
 int main() {
 	HashTable hashTable;
+	hashTable.default_init();
+	
+	while (true) {
+		int action;
+		std::cout << "1 - insert\n2 - search\n3 - remove\n4 - display\n\nAction: ";
+		std::cin >> action;
+		switch (action) {
+			case 1: {
+				int code, price;
+				std::string name;
+				std::cout << "code: ";
+				std::cin >> code;
+				std::cout << "name: ";
+				std::cin >> name;
+				std::cout << "price: ";
+				std::cin >> price;
+				std::cout << "insert: " << code << ' ' << name << ' ' << price << '\n';
+				hashTable.insert(Product(code, name, price));
+				break;
+			}
 
-	hashTable.displayTable();
-	std::cout << "\nInsert: code 5555 name GGGG price 4444\n";
-	hashTable.insert(Product(5555, "GGGG", 4444));
-	hashTable.displayTable();
-	
-	hashTable.insert(Product(5555, "GGGG", 4444));
-	
-	hashTable.displayTable();
+			case 2: {
+				int key;
+				std::cout << "code: ";
+				std::cin >> key;
+				Product *found = hashTable.search(key);
+				if (found == nullptr)
+					std::cout << "not found\n";
+				else
+					std::cout << "elements name: " << found->name << " elements price: " << found->price << '\n';
+				delete found;
+				break;
+			}
+
+			case 3: {
+				int key;
+				std::cout << "code: ";
+				std::cin >> key;
+				hashTable.remove(key);
+				break;
+			}
+
+			case 4: {
+				hashTable.displayTable();
+			}
+		}
+	}
 
 	return 0;
-
-
 }
