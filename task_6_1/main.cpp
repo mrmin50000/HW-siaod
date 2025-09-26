@@ -181,7 +181,6 @@ int main() {
 					std::cout << "not found\n";
 				else
 					std::cout << "elements name: " << found->name << " elements price: " << found->price << '\n';
-				delete found;
 				break;
 			}
 
