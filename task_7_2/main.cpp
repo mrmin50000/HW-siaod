@@ -119,7 +119,7 @@ public:
             cout << "└── ";
         }
 
-        cout << node << '\n';
+        cout << node + 1 << '\n';
 
         for (int child : tree[node]) {
             printTree(child, tree, level + 1);
