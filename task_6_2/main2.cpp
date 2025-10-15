@@ -50,16 +50,16 @@ int KMP(std::string &text, std::string &pattern) {
 int main() {
     std::string text, pattern;
 
-    std::cout << "Введите текст: ";
+    std::cout << "Text: ";
     std::getline(std::cin, text);
 
-    std::cout << "Введите образец для поиска: ";
+    std::cout << "Pattern: ";
     std::getline(std::cin, pattern);
 
     int result = KMP(text, pattern);
 
     if (result != -1) {
-        std::cout << "Последнее вхождение образца начинается с индекса: " << result << '\n';
+        std::cout << "Index of last: " << result << '\n';
     } else {
         std::cout << "not found\n";
     }
