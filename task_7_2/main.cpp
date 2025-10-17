@@ -88,7 +88,7 @@ public:
         int totalWeight = 0;
         for (int i = 1; i < vertices; i++) {
             if (parent[i] != -1) {
-                cout << parent[i] << " - " << i << " \t" << adjacencyMatrix[i][parent[i]] << '\n';
+                cout << parent[i] + 1 << " - " << i + 1<< " \t" << adjacencyMatrix[i][parent[i]] << '\n';
                 totalWeight += adjacencyMatrix[i][parent[i]];
             }
         }
