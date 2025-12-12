@@ -1,4 +1,3 @@
-#include <clocale>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -6,207 +5,234 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
-#include <queue>
-#include <bitset>
+#include <cctype>
 
 using namespace std;
 
-// Задание 1
-struct Symbol {
-    char character;   // сам символ
-    double frequency; // его частота в тексте
-    string code;      // код, который присваиваем ему
+// Helper: Split UTF-8 string into individual UTF-8 character strings
+vector<string> utf8_chars(const string& s) {
+    vector<string> chars;
+    for (size_t i = 0; i < s.size(); ) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t len;
+        if ((c & 0x80) == 0) {
+            len = 1; // ASCII
+        } else if ((c & 0xE0) == 0xC0) {
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            len = 4;
+        } else {
+            len = 1; // Invalid UTF-8: skip 1 byte
+        }
 
-    Symbol(char ch, double freq) : character(ch), frequency(freq) {}
+        if (i + len > s.size()) {
+            len = 1;
+        }
+
+        chars.push_back(s.substr(i, len));
+        i += len;
+    }
+    return chars;
+}
+
+// Symbol now stores a full UTF-8 character as string
+struct Symbol {
+    string character;   // UTF-8 character (1-4 bytes)
+    double frequency;   // frequency count
+    string code;        // Shannon-Fano code
+
+    Symbol(const string& ch, double freq) : character(ch), frequency(freq) {}
 };
 
-// Сравнивает узлы по частоте (для сортировки)
-bool compareSymbols(Symbol& a, Symbol& b) {
+// Comparator: sort by frequency descending
+bool compareSymbols(const Symbol& a, const Symbol& b) {
     return a.frequency > b.frequency;
 }
 
-// Присвоение символам кодов
+// Recursive Shannon-Fano splitting
 void shannonFanoSplit(vector<Symbol>& symbols, int start, int end, string currentCode) {
     if (start > end) return;
-
-    // Если остался один символ - присваиваем ему код
     if (start == end) {
         symbols[start].code = currentCode;
         return;
     }
 
-    // Вычисляем общую частоту для текущего отрезка
-    int totalFrequency = 0;
-    for (int i = start; i <= end; i++) {
+    // Total frequency in segment
+    double totalFrequency = 0;
+    for (int i = start; i <= end; ++i) {
         totalFrequency += symbols[i].frequency;
     }
 
-    // Ищем точку разделения - где сумма частот максимально близка к половине
-    int currentSum = 0;
+    double currentSum = 0;
     int splitIndex = start;
 
-    for (int i = start; i <= end; i++) {
+    for (int i = start; i <= end; ++i) {
         currentSum += symbols[i].frequency;
-
-        // Если текущая сумма больше или равна половине общей частоты
         if (currentSum * 2 >= totalFrequency) {
-            // Выбираем лучшее разделение
-            int diff1 = abs(2 * currentSum - totalFrequency);
-            int diff2 = abs(2 * (currentSum - symbols[i].frequency) - totalFrequency);
-
+            double diff1 = abs(2 * currentSum - totalFrequency);
+            double diff2 = abs(2 * (currentSum - symbols[i].frequency) - totalFrequency);
             splitIndex = (diff1 < diff2) ? i : i - 1;
             break;
         }
     }
 
-    // Рекурсивно обрабатываем левую и правую части
+    // Recurse left (0) and right (1)
     shannonFanoSplit(symbols, start, splitIndex, currentCode + "0");
     shannonFanoSplit(symbols, splitIndex + 1, end, currentCode + "1");
 }
 
-// Основная функция сжатия по Шеннону-Фано
+// Main compression function
 string compressShannonFano(const string& data) {
-    if (data.empty()) {
-        return "";
-    }
-    // Подсчет количества одинаковых символов
-    unordered_map<char, int> frequencyMap;
-    for (char ch : data) {
+    if (data.empty()) return "";
+
+    // Step 1: Extract UTF-8 characters
+    auto chars = utf8_chars(data);
+
+    // Step 2: Count frequencies
+    unordered_map<string, int> frequencyMap;
+    for (const string& ch : chars) {
         frequencyMap[ch]++;
     }
-    // Создаем вектор символов
+
+    // Step 3: Build symbol list
     vector<Symbol> symbols;
     for (const auto& pair : frequencyMap) {
-        symbols.push_back(Symbol(pair.first, pair.second));
+        symbols.emplace_back(pair.first, pair.second);
     }
-    // Сортируем символы по убыванию частоты
+
+    // Step 4: Sort by frequency (descending)
     sort(symbols.begin(), symbols.end(), compareSymbols);
-    // Генерируем коды Шеннона-Фано
+
+    // Step 5: Generate codes
     shannonFanoSplit(symbols, 0, symbols.size() - 1, "");
-    // Создаем таблицу кодов для быстрого доступа
-    unordered_map<char, string> codeTable;
-    for (const auto& symbol : symbols) {
-        codeTable[symbol.character] = symbol.code;
+
+    // Step 6: Build encoding table
+    unordered_map<string, string> codeTable;
+    for (const auto& sym : symbols) {
+        codeTable[sym.character] = sym.code;
     }
 
-    // Кодируем исходный текст
-    stringstream compressedText;
-    for (char ch : data) {
-        compressedText << codeTable[ch];
+    // Step 7: Encode input
+    stringstream compressedStream;
+    for (const string& ch : chars) {
+        compressedStream << codeTable[ch];
     }
+    string compressed = compressedStream.str();
 
-    // Сохраняем сжатые данные
-    ofstream compressedFile("compressed_text.txt", ios::binary);
-    compressedFile << compressedText.str();
-    compressedFile.close();
+    // Step 8: Save compressed data (as text of 0s/1s)
+    ofstream compFile("compressed_text.txt");
+    compFile << compressed;
+    compFile.close();
 
-    // Сохраняем таблицу кодов
-    ofstream dictFile("dict.txt");
-    dictFile.imbue(locale("ru_RU.UTF-8"));
-
-    for (const auto& symbol : symbols) {
+    // Step 9: Save dictionary (human-readable UTF-8)
+    ofstream dictFile("dict.txt"); // Linux defaults to UTF-8
+    for (const auto& sym : symbols) {
         dictFile << "Символ: ";
 
-        // Обработка специальных символов
-        if (symbol.character == ' ') {
+        if (sym.character == " ") {
             dictFile << "<пробел>";
-        }
-        else if (symbol.character == '\n') {
+        } else if (sym.character == "\n") {
             dictFile << "<новая_строка>";
-        }
-        else if (symbol.character == '\t') {
+        } else if (sym.character == "\t") {
             dictFile << "<табуляция>";
-        }
-        else {
-            dictFile << symbol.character;
+        } else {
+            dictFile << sym.character; // Full UTF-8 character
         }
 
-        dictFile << " | Код: " << symbol.code << "\n";
+        dictFile << " | Код: " << sym.code << "\n";
     }
     dictFile.close();
 
-    return compressedText.str();
+    return compressed;
 }
 
-// Функция для расшифровки
-string decompressShannonFano(const string& compressedData, const unordered_map<string, char>& codeTable) {
+// Decompression: from bitstring + code table
+string decompressShannonFano(const string& compressedData,
+                             const unordered_map<string, string>& codeTable) {
+    // Build reverse lookup: code -> character
+    unordered_map<string, string> reverseTable;
+    for (const auto& kv : codeTable) {
+        reverseTable[kv.second] = kv.first;
+    }
+
     string currentCode;
     string result;
-
-
     for (char bit : compressedData) {
         currentCode += bit;
-        if (codeTable.find(currentCode) != codeTable.end()) {
-            result += codeTable.at(currentCode);
+        auto it = reverseTable.find(currentCode);
+        if (it != reverseTable.end()) {
+            result += it->second;
             currentCode.clear();
         }
     }
-
     return result;
 }
 
-// Функция для загрузки таблицы кодов из файла
-unordered_map<string, char> loadCodeTable(const string& filename) {
-    unordered_map<string, char> codeTable;
+// Load dictionary from file
+unordered_map<string, string> loadCodeTable(const string& filename) {
+    unordered_map<string, string> codeTable; // code -> character
     ifstream dictFile(filename);
-    dictFile.imbue(locale("ru_RU.UTF-8"));
+    if (!dictFile.is_open()) {
+        cerr << "Error: Cannot open " << filename << endl;
+        return codeTable;
+    }
 
     string line;
     while (getline(dictFile, line)) {
-        // Пропуск заголовков
-        if (line.find("Символ:") != string::npos) {
-            size_t codePos = line.find("| Код: ");
-            if (codePos != string::npos) {
-                // Извлечение кода
-                string code = line.substr(codePos + 7);
+        if (line.find("Символ:") == string::npos) continue;
 
-                // Извлечение символа
-                size_t symbolStart = line.find("Символ: ") + 8;
-                size_t symbolEnd = line.find(" |", symbolStart);
-                string symbolStr = line.substr(symbolStart, symbolEnd - symbolStart);
+        size_t codePos = line.find(" | Код: ");
+        if (codePos == string::npos) continue;
 
-                char symbol;
-                if (symbolStr == "<пробел>") {
-                    symbol = ' ';
-                }
-                else if (symbolStr == "<новая_строка>") {
-                    symbol = '\n';
-                }
-                else if (symbolStr == "<табуляция>") {
-                    symbol = '\t';
-                }
-                else {
-                    symbol = symbolStr[0];
-                }
+        string code = line.substr(codePos + 8); // " | Код: " is 8 chars
 
-                codeTable[code] = symbol;
-            }
+        size_t start = line.find("Символ: ") + 8;
+        size_t end = line.find(" |", start);
+        if (end == string::npos) continue;
+
+        string symbolStr = line.substr(start, end - start);
+
+        string character;
+        if (symbolStr == "<пробел>") {
+            character = " ";
+        } else if (symbolStr == "<новая_строка>") {
+            character = "\n";
+        } else if (symbolStr == "<табуляция>") {
+            character = "\t";
+        } else {
+            character = symbolStr; // UTF-8 string
         }
-    }
 
+        codeTable[code] = character;
+    }
     dictFile.close();
     return codeTable;
 }
 
+// Main function
 int main() {
     cout << "Enter the text to compress: ";
     string text;
     getline(cin, text);
+
     string compressed = compressShannonFano(text);
     cout << "Data saved to file compressed_text.txt" << endl;
     cout << "Dictionary saved to file dict.txt" << endl;
 
-    unordered_map<string, char> codeTable = loadCodeTable("dict.txt");
+    // Load code table
+    auto reverseTable = loadCodeTable("dict.txt");
 
-    ifstream compressedFile("compressed_text.txt", ios::binary);
+    // Read compressed data
+    ifstream compFile("compressed_text.txt");
     string compressedData;
-    compressedFile >> compressedData;
-    compressedFile.close();
+    getline(compFile, compressedData); // It's a single line of 0s/1s
+    compFile.close();
 
-    string decompressed = decompressShannonFano(compressedData, codeTable);
-    cout << decompressed;
-    
+    // Decompress
+    string decompressed = decompressShannonFano(compressedData, reverseTable);
+    cout << "\nDecompressed text:\n" << decompressed << endl;
+
     return 0;
 }
-
-

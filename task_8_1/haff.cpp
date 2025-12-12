@@ -1,4 +1,3 @@
-#include <clocale>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -8,45 +7,67 @@
 #include <sstream>
 #include <queue>
 #include <bitset>
-#include <math.h>
+#include <cmath>
+#include <cctype>
+
 using namespace std;
 
+// === UTF-8 Helper: разбить строку на UTF-8 символы ===
+vector<string> utf8_chars(const string& s) {
+    vector<string> chars;
+    for (size_t i = 0; i < s.size(); ) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t len;
+        if ((c & 0x80) == 0) {
+            len = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            len = 4;
+        } else {
+            len = 1; // invalid, skip
+        }
+        if (i + len > s.size()) len = 1;
+        chars.push_back(s.substr(i, len));
+        i += len;
+    }
+    return chars;
+}
 
-// Задание 2
-// Структура узла дерева Хаффмана
+// === Узел дерева Хаффмана (работает со строками) ===
 struct HuffmanNode {
-    char character;
+    string character;  // UTF-8 символ как строка
     int frequency;
     string code;
     HuffmanNode* left;
     HuffmanNode* right;
 
-    HuffmanNode(char ch, int freq) : character(ch), frequency(freq),
-        left(nullptr), right(nullptr) {}
+    HuffmanNode(const string& ch, int freq)
+        : character(ch), frequency(freq), left(nullptr), right(nullptr) {}
 
-    // Для priority_queue - сравнение по частоте (меньшая частота имеет высший приоритет)
     bool operator>(const HuffmanNode& other) const {
         return frequency > other.frequency;
     }
 };
 
-// Для сравнения указателей в priority_queue
 struct CompareNode {
     bool operator()(HuffmanNode* a, HuffmanNode* b) {
-        return a->frequency > b->frequency; // меньшие частоты - первые
+        return a->frequency > b->frequency;
     }
 };
 
+// === Класс Хаффман-кодирования ===
 class HuffmanCoding {
 private:
-    unordered_map<char, string> codes;        // Коды для символов
-    unordered_map<string, char> reverseCodes; // Символы по кодам
-    HuffmanNode* root;                        // Корень дерева
+    unordered_map<string, string> codes;        // символ (UTF-8) -> код
+    unordered_map<string, string> reverseCodes; // код -> символ
+    HuffmanNode* root;
 
-    // Рекурсивная генерация кодов
-    void generateCodes(HuffmanNode* node, string currentCode) {
+    void generateCodes(HuffmanNode* node, const string& currentCode) {
         if (!node) return;
-        if (node->character != '\0') {
+        if (!node->character.empty()) {
             node->code = currentCode;
             codes[node->character] = currentCode;
             reverseCodes[currentCode] = node->character;
@@ -54,7 +75,7 @@ private:
         generateCodes(node->left, currentCode + "0");
         generateCodes(node->right, currentCode + "1");
     }
-    // Рекурсивное удаление дерева
+
     void deleteTree(HuffmanNode* node) {
         if (node) {
             deleteTree(node->left);
@@ -65,90 +86,81 @@ private:
 
 public:
     HuffmanCoding() : root(nullptr) {}
-    ~HuffmanCoding() {
-        deleteTree(root);
-    }
+    ~HuffmanCoding() { deleteTree(root); }
 
-    // Основная функция сжатия
     string compress(const string& data) {
         if (data.empty()) return "";
 
+        auto chars = utf8_chars(data);
 
-        // Подсчет частот символов
-        unordered_map<char, int> frequency;
-        for (char ch : data) {
+        // Частоты
+        unordered_map<string, int> frequency;
+        for (const string& ch : chars) {
             frequency[ch]++;
         }
 
-        // Создание начальных узлов (листьев)
+        // Мин-куча
         priority_queue<HuffmanNode*, vector<HuffmanNode*>, CompareNode> minHeap;
-        for (auto pair : frequency) {
+        for (const auto& pair : frequency) {
             minHeap.push(new HuffmanNode(pair.first, pair.second));
         }
 
-        // Построение дерева Хаффмана
+        // Построение дерева
         while (minHeap.size() > 1) {
-            // Извлекаем два узла с наименьшими частотами
-            HuffmanNode* left = minHeap.top();
-            minHeap.pop();
+            HuffmanNode* left = minHeap.top(); minHeap.pop();
+            HuffmanNode* right = minHeap.top(); minHeap.pop();
 
-            HuffmanNode* right = minHeap.top();
-            minHeap.pop();
-
-            // Создаем новый внутренний узел
-            HuffmanNode* internalNode = new HuffmanNode('\0', left->frequency + right->frequency);
-            internalNode->left = left;
-            internalNode->right = right;
-
-            minHeap.push(internalNode);
+            auto* internal = new HuffmanNode("", left->frequency + right->frequency);
+            internal->left = left;
+            internal->right = right;
+            minHeap.push(internal);
         }
 
-        // Последний узел в куче - корень дерева
         root = minHeap.top();
         minHeap.pop();
 
         // Генерация кодов
         generateCodes(root, "");
 
-        // Кодирование текста
-        stringstream compressedText;
-        for (char ch : data) {
-            compressedText << codes[ch];
+        // Кодирование
+        stringstream compressed;
+        for (const string& ch : chars) {
+            compressed << codes[ch];
         }
-
-        return compressedText.str();
+        return compressed.str();
     }
 
-    // Функция восстановления текста
     string decompress(const string& compressedData) {
-        string currentCode;
-        string result;
-
+        string currentCode, result;
         for (char bit : compressedData) {
             currentCode += bit;
-            if (reverseCodes.find(currentCode) != reverseCodes.end()) {
-                result += reverseCodes[currentCode];
+            auto it = reverseCodes.find(currentCode);
+            if (it != reverseCodes.end()) {
+                result += it->second;
                 currentCode.clear();
             }
         }
-
         return result;
     }
 
-    // Геттеры
-    unordered_map<char, string> getCodes() const { return codes; }
+    unordered_map<string, string> getCodes() const { return codes; }
     HuffmanNode* getRoot() const { return root; }
 
-    // Визуализация дерева
     void printTree(HuffmanNode* node, int indent = 0, const string& prefix = "") {
         if (!node) return;
 
         cout << string(indent * 4, ' ') << prefix;
-        if (node->character != '\0') {
-            string charDisplay = (node->character == ' ') ? "<пробел>" : string(1, node->character);
-            cout << "'" << charDisplay << "' (freq: " << node->frequency << ", code: " << node->code << ")";
-        }
-        else {
+        if (!node->character.empty()) {
+            string display = node->character;
+            if (display == " ") {
+                display = "<пробел>";
+            } else if (display == "\n") {
+                display = "<новая_строка>";
+            } else if (display == "\t") {
+                display = "<табуляция>";
+            }
+            cout << "'" << display << "' (freq: " << node->frequency << ", code: " << node->code << ")";
+        } else {
             cout << "internal (freq: " << node->frequency << ")";
         }
         cout << endl;
@@ -158,67 +170,92 @@ public:
     }
 };
 
-void calculateHuffmanStatistics(const string& text, const unordered_map<char, string>& codes) {
+// === Статистика ===
+void calculateHuffmanStatistics(const string& text, const unordered_map<string, string>& codes) {
     if (text.empty() || codes.empty()) return;
-    // Подсчет частот
-    unordered_map<char, int> frequency;
-    for (char ch : text) {
+
+    auto chars = utf8_chars(text);
+    unordered_map<string, int> frequency;
+    for (const string& ch : chars) {
         frequency[ch]++;
     }
-    int totalChars = text.length();
+    int totalChars = chars.size();
 
-    // Коэффициенты сжатия
-    int originalAsciiSize = text.length() * 8;
+    // Размер в ASCII (8 бит на байт — НЕ точно, но для сравнения)
+    int originalAsciiSize = text.size() * 8; // исходные байты × 8
     int compressedSize = 0;
-    for (char ch : text) {
+    for (const string& ch : chars) {
         compressedSize += codes.at(ch).length();
     }
-    double compressionRatioAscii = (1.0 - static_cast<double>(compressedSize) / originalAsciiSize) * 100.0;
-    int alphabetSize = codes.size();
-    int uniformCodeLength = ceil(log2(alphabetSize));
-    int originalUniformSize = text.length() * uniformCodeLength;
-    double compressionRatioUniform = (1.0 - static_cast<double>(compressedSize) / originalUniformSize) * 100.0;
 
-    cout << "Коэффициенты сжатия: \n";
-    cout << "Относительно ASCII (8 бит/символ): " << compressionRatioAscii << "%\n";
-    cout << "Относительно равномерного кода (" << uniformCodeLength << " бит/символ): " << compressionRatioUniform << "%\n";
+    double ratioAscii = (1.0 - static_cast<double>(compressedSize) / originalAsciiSize) * 100.0;
+
+    // Равномерный код
+    int alphabetSize = codes.size();
+    int uniformLen = (alphabetSize > 1) ? static_cast<int>(ceil(log2(alphabetSize))) : 1;
+    int uniformSize = totalChars * uniformLen;
+    double ratioUniform = (1.0 - static_cast<double>(compressedSize) / uniformSize) * 100.0;
+
+    cout << "Коэффициенты сжатия:\n";
+    cout << "Относительно исходных байтов (×8 бит): " << ratioAscii << "%\n";
+    cout << "Относительно равномерного кода (" << uniformLen << " бит/символ): " << ratioUniform << "%\n";
 
     // Средняя длина кода
-    double avgCodeLength = 0.0;
-    for (const auto& pair : frequency) {
-        double probability = static_cast<double>(pair.second) / totalChars;
-        avgCodeLength += codes.at(pair.first).length() * probability;
+    double avgLen = 0.0;
+    for (const auto& p : frequency) {
+        double prob = static_cast<double>(p.second) / totalChars;
+        avgLen += codes.at(p.first).length() * prob;
     }
-
 
     // Дисперсия
     double variance = 0.0;
-    for (const auto& pair : frequency) {
-        double probability = static_cast<double>(pair.second) / totalChars;
-        double codeLength = codes.at(pair.first).length();
-        variance += pow(codeLength - avgCodeLength, 2) * probability;
+    for (const auto& p : frequency) {
+        double prob = static_cast<double>(p.second) / totalChars;
+        double len = codes.at(p.first).length();
+        variance += pow(len - avgLen, 2) * prob;
     }
-    cout << "Средняя длина кода : " << avgCodeLength << " бит\n";
-    cout << "Дисперсия: " << variance << "\n";\
+
+    cout << "Средняя длина кода: " << avgLen << " бит\n";
+    cout << "Дисперсия: " << variance << "\n";
 }
 
-// Функция сохранения сжатого текста
-void saveAsBinary(const string& compressedText, const unordered_map<char, string>& codes) {
+// === Сохранение сжатых данных как бинарный файл ===
+void saveAsBinary(const string& compressedText) {
     ofstream file("compressed.bin", ios::binary);
+    if (!file.is_open()) return;
 
     string bits = compressedText;
-    int padding = 8 - bits.length() % 8;
-    if (padding != 8) bits += string(padding, '0');
+    int padding = (8 - (bits.size() % 8)) % 8;
+    bits += string(padding, '0');
 
-    for (size_t i = 0; i < bits.length(); i += 8) {
-        string byteStr = bits.substr(i, 8);
-        unsigned char byte = bitset<8>(byteStr).to_ulong();
-        file.write(reinterpret_cast<char*>(&byte), 1);
+    for (size_t i = 0; i < bits.size(); i += 8) {
+        bitset<8> byte(bits.substr(i, 8));
+        unsigned char c = static_cast<unsigned char>(byte.to_ulong());
+        file.write(reinterpret_cast<char*>(&c), sizeof(c));
     }
-
     file.close();
 }
 
+// === Сохранение словаря кодов ===
+void saveCodeDictionary(const unordered_map<string, string>& codes) {
+    ofstream dict("huffman_dict.txt"); // UTF-8 by default on Linux
+    for (const auto& p : codes) {
+        dict << "Символ: ";
+        if (p.first == " ") {
+            dict << "<пробел>";
+        } else if (p.first == "\n") {
+            dict << "<новая_строка>";
+        } else if (p.first == "\t") {
+            dict << "<табуляция>";
+        } else {
+            dict << p.first; // полный UTF-8 символ
+        }
+        dict << " | Код: " << p.second << "\n";
+    }
+    dict.close();
+}
+
+// === Основная функция ===
 int main() {
     string testText = "ооофывфычсясывлафыводйцулдсямлчс ьлывалфвы счмдлйлбБ фдзвфюВ, фалфывс, АвфвывфвЮБ фвафбчясоцфв ЮБ,,. фывя";
 
@@ -226,22 +263,28 @@ int main() {
     string compressed = huffman.compress(testText);
     string decompressed = huffman.decompress(compressed);
 
-    cout << "Закодированный текст: " << compressed << endl;
-    cout << "Декодированный текст: " << decompressed << endl;
+    cout << "Оригинал: " << testText << "\n\n";
+    cout << "Декодировано: " << decompressed << "\n\n";
 
-    // Статистика 
+    // Статистика
     calculateHuffmanStatistics(testText, huffman.getCodes());
 
-    // Визуализация дерева
-    cout << "\n";
+    // Дерево
+    cout << "\nДерево Хаффмана:\n";
     huffman.printTree(huffman.getRoot());
 
-    // Сжатие файла
-    saveAsBinary(compressed, huffman.getCodes());
-    // Добавление Исходного текста в файл
+    // Сохранение
+    saveAsBinary(compressed);
+    saveCodeDictionary(huffman.getCodes());
+
     ofstream textFile("text.txt");
     textFile << testText;
     textFile.close();
+
+    cout << "\nФайлы сохранены:\n";
+    cout << "- text.txt (исходный текст)\n";
+    cout << "- compressed.bin (бинарное сжатие)\n";
+    cout << "- huffman_dict.txt (словарь с читаемыми русскими символами)\n";
+
     return 0;
 }
-
